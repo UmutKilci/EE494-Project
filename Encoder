@@ -1,0 +1,195 @@
+import RPi.GPIO as GPIO                    
+import time
+import datetime
+GPIO.setwarnings(False)
+GPIO.setmode(GPIO.BCM)              
+
+encoder1=15
+encoder2=14
+
+m12=16
+m11=12
+m22=21
+m21=20
+
+me1=19
+me2=26
+
+GPIO.setup(m11,GPIO.OUT)
+GPIO.setup(m12,GPIO.OUT)
+GPIO.setup(m21,GPIO.OUT)
+GPIO.setup(m22,GPIO.OUT)
+GPIO.setup(encoder1,GPIO.IN)
+GPIO.setup(encoder2,GPIO.IN)
+GPIO.setup(me1,GPIO.OUT)
+GPIO.setup(me2,GPIO.OUT)
+
+pwm_1=GPIO.PWM(19,500)
+pwm_2=GPIO.PWM(26,500)
+
+
+pwm_1.start(100)
+pwm_2.start(100)
+
+time.sleep(1)
+            
+global duty_cycle1
+duty_cycle1 = 75
+global duty_cycle2
+duty_cycle2 = 100
+
+global revcount1
+revcount1 = 0
+global revcount2
+revcount2 = 0
+
+total1 = 0 
+total2 = 0 
+
+def stop():
+    print ("stop")
+    GPIO.output(m11, 0)
+    GPIO.output(m21, 0)
+    GPIO.output(m12, 0)
+    GPIO.output(m22, 0)
+def forward():
+    print ("Forward")
+    GPIO.output(m11, 1)
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 1)
+    GPIO.output(m22, 0)
+   
+    
+def back():
+    print ("back")
+    GPIO.output(m11, 0)
+    GPIO.output(m12, 1)
+    GPIO.output(m21, 0)
+    GPIO.output(m22, 1)
+    
+def left():
+    print ("left")
+    GPIO.output(m11, 0)
+    GPIO.output(m12, 1)
+    GPIO.output(m21, 1)
+    GPIO.output(m22, 0)
+    
+def right():
+    print ("right")
+    pwm_1.ChangeDutyCycle(100)
+    pwm_2.ChangeDutyCycle(100)
+    GPIO.output(m11, 1)
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 0)
+    GPIO.output(m22, 1)
+
+
+def equal():
+    global duty_cycle1
+    global duty_cycle2    
+    global revcount1    
+    global revcount2
+    
+    if revcount1 < revcount2 :
+        if duty_cycle1 == 100 :
+            if duty_cycle2 > 60 :
+                duty_cycle2 = duty_cycle2 - 1
+            print("r1 " +str(revcount1) + " / r2 " +str(revcount2) + " / d1 " +str(duty_cycle1) + " / d2 " +str(duty_cycle2))
+            pwm_2.ChangeDutyCycle(duty_cycle2)
+        else :
+            duty_cycle1 = duty_cycle1 + 1
+            print("r1 " +str(revcount1) + " / r2 " +str(revcount2) + " / d1 " +str(duty_cycle1) + " / d2 " +str(duty_cycle2))
+            pwm_1.ChangeDutyCycle(duty_cycle1)
+    elif revcount1  > revcount2 :
+        if duty_cycle2 == 100 :
+            if duty_cycle1 > 60 :
+                duty_cycle1 = duty_cycle1 - 1
+            print("r1 " +str(revcount1) + " / r2 " +str(revcount2) + " / d1 " +str(duty_cycle1) + " / d2 " +str(duty_cycle2))
+            pwm_1.ChangeDutyCycle(duty_cycle1)
+        else :
+            duty_cycle2 = duty_cycle2 + 1
+            print("r1 " +str(revcount1) + " / r2 " +str(revcount2) + " / d1 " +str(duty_cycle1) + " / d2 " +str(duty_cycle2))
+            pwm_2.ChangeDutyCycle(duty_cycle2)
+    else :
+        if duty_cycle1 != 100 and duty_cycle2 != 100 :
+            duty_cycle1 = 100
+            duty_cycle2 = 100
+            print("r1 " +str(revcount1) + " / r2 " +str(revcount2) + " / d1 " +str(duty_cycle1) + " / d2 " +str(duty_cycle2))
+            pwm_1.ChangeDutyCycle(duty_cycle1)
+            pwm_2.ChangeDutyCycle(duty_cycle2)
+
+            
+def increaserev1(channel):
+    global revcount1
+    revcount1 += 1
+global rpm1
+rpm1=0
+global rpm2
+rpm2=0
+def increaserev2(channel):
+    global revcount2
+    revcount2 += 1
+
+##if revcount1 % 10 == 0 :
+##    equal()
+##if revcount2 % 10 == 0 :
+##    equal()
+pwm_1.ChangeDutyCycle(duty_cycle1)
+pwm_2.ChangeDutyCycle(duty_cycle2)
+forward()
+GPIO.add_event_detect(encoder1, GPIO.RISING, callback=increaserev1)
+GPIO.add_event_detect(encoder2, GPIO.RISING, callback=increaserev2)
+
+a = datetime.datetime.now()
+distance1=0
+distance2=0
+temp_dist1=0
+temp_dist2=0
+try :
+    while True :
+       #  if count:
+        sleep = 1
+        time.sleep(sleep)
+        print("r1 " +str(revcount1)+ "      r2 " +str(revcount2)) 
+        equal()
+##        print("revcount1 " +str(revcount1) +     " / revcount2 " + str(revcount2))
+        rpm1=(revcount1)*0.028*60
+        rpm2=(revcount2)*0.028*60
+        speed1 = rpm1 * 2*3.14*0.0325
+        speed2 = rpm2 * 2*3.14*0.0325
+        distance1 = distance1 + (speed1/60)
+        distance2 = distance2 + (speed2/60)
+        temp_dist1 = temp_dist1 + (speed1/60)
+        temp_dist2 = temp_dist2 + (speed2/60)
+
+        if temp_dist1 > 0.58 :
+            stop()
+            temp_dist1=0
+            time.sleep(1)
+            forward()
+        
+        print("speed1 " +str(speed1)+ "      speed2 " +str(speed2)) 
+        rpm1=float(rpm1)
+        rpm2=float(rpm2)
+        print("rpm1 " +str(rpm1)+ "      rpm2 " +str(rpm2))
+        total1 = total1 + revcount1
+        total2 = total2 + revcount2
+        revcount1 = 0
+        revcount2 = 0
+        
+       ## print("PID1" +str(PID) )
+        ##duty_cycle1=duty_cycle1-new_pwm1
+       ## duty_cycle2=duty_cycle2-new_pwm2
+       ## pwm_1.ChangeDutyCycle(duty_cycle1)
+        
+except KeyboardInterrupt:
+    b = datetime.datetime.now()
+    c = b-a
+    print("Time : " + str(c))
+    print("distance 1 : " + str(distance1) + " / distance 2 : " + str(distance2))
+    print("total1 " +str(total1) + " / total2 " +str(total2))
+    print ("Keyboard Interrupt" )
+    stop()
+
+finally:
+    GPIO.cleanup()
