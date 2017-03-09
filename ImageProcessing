@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 
 GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
 
 TRIG = 23 
 ECHO = 24
@@ -28,7 +29,12 @@ GPIO.setup(m21,GPIO.OUT)
 GPIO.setup(m22,GPIO.OUT)
 GPIO.setup(me1,GPIO.OUT)
 GPIO.setup(me2,GPIO.OUT)
-GPIO.setwarnings(False)
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(18, GPIO.OUT)
+pwm = GPIO.PWM(18, 100)
+pwm.start(12)
+time.sleep(1)
 
 forw = 0
 
@@ -38,30 +44,27 @@ pwm_2=GPIO.PWM(me2,100)
 pwm_1.start(75)
 pwm_2.start(75)
 
- 
+
 # initialize the camera and grab a reference to the raw camera capture
 camera = PiCamera()
 camera.resolution = (320, 240)
-camera.framerate = 40
+camera.framerate = 35
 camera.hflip = True
+camera.rotation = 180
 
 rawCapture = PiRGBArray(camera, size=(320, 240))
- 
+
 # allow the camera to warmup
 time.sleep(0.1)
-total_x = 0
-total_a = 0
-count_x = 0
 count = 0
-move_slow=0
-sensor_on =0
+last_dir=0
 
 def stop():
     GPIO.output(m11, 0)
     GPIO.output(m12, 0)
     GPIO.output(m21, 0)
     GPIO.output(m22, 0)
-    
+
 def forward():
     pwm_1.ChangeDutyCycle(75)
     pwm_2.ChangeDutyCycle(75)
@@ -77,7 +80,7 @@ def slowforward():
     GPIO.output(m12, 0)
     GPIO.output(m21, 1)
     GPIO.output(m22, 0)   
-    
+
 def back():
     pwm_1.ChangeDutyCycle(50)
     pwm_2.ChangeDutyCycle(50)
@@ -85,7 +88,7 @@ def back():
     GPIO.output(m12, 1)
     GPIO.output(m21, 0)
     GPIO.output(m22, 1)
-    
+
 def left():
     pwm_1.ChangeDutyCycle(75)
     pwm_2.ChangeDutyCycle(75)
@@ -95,7 +98,7 @@ def left():
     GPIO.output(m22, 0)
     time.sleep(0.1)
     stop()
-    
+
 def right():
     pwm_1.ChangeDutyCycle(75)
     pwm_2.ChangeDutyCycle(75)
@@ -121,83 +124,92 @@ def sensor():
     print(str(distance))
     if distance < 20 :
         print ("Distance < 20 cm")
-        stop()
 
-stop()
+##forward()
 # capture frames from the camera
-for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
-	try :
-
-            # grab the raw NumPy array representing the image, then initialize the timestamp
-            # and occupied/unoccupied text
-            image = frame.array
-
-            blur = cv2.blur(image, (3,3))
-
-            #hsv to complicate things, or stick with BGR
-            #hsv = cv2.cvtColor(blur,cv2.COLOR_BGR2HSV)
-            #thresh = cv2.inRange(hsv,np.array((0, 200, 200)), np.array((20, 255, 255)))
-
-            lower = np.array([0,0,150],dtype="uint8")
-            #upper = np.array([225,88,50], dtype="uint8")
-            upper = np.array([70,70,255], dtype="uint8")
-
-            thresh = cv2.inRange(blur, lower, upper)
-            thresh2 = thresh.copy()
-
-            # find contours in the threshold image
-            image, contours,hierarchy = cv2.findContours(thresh,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
-            
-            # finding contour with maximum area and store it as best_cnt
-            
-            best_cnt = 1
-            max_area = 100
-            
-            for cnt in contours:
-                    area = cv2.contourArea(cnt)
-                    if area > max_area:
-                            max_area = area
-                            best_cnt = cnt
-                            (x,y),radius = cv2.minEnclosingCircle(cnt)
-                            center = (int(x),int(y))
-                            radius = int(radius)
-                            cv2.circle(blur,center,radius,(0,255,0),2)
-                            count_x = count_x + 1
-                            total_x= x + total_x
-                            total_a=area+total_a                                                 
-                            count = 0
-                            
-                            if count_x > 10 :
-                                total_a = total_a/count_x
-            
-                                total_x = 0
-                                count_x = 0   
-                    
-                                if x > 240 and x < 400 :   
-                                    #forward()
-                                    print ("forward")
-                                    sensor_on=1                                
-                                elif x >= 400 :
-                                    move_slow=0      
-                                    left()
-                                    #print ("left")
-                                elif x  <  240 :
-                                    move_slow=0      
-                                    right()
-                                    #print ("right")
-                
-            # finding centroids of best_cnt and draw a circle there
-            M = cv2.moments(best_cnt)
-            cx,cy = int(M['m10']/M['m00']), int(M['m01']/M['m00'])
-            # show the frame
-            cv2.imshow("Frame", blur)
-            #cv2.imshow('thresh',thresh2)
-            key = cv2.waitKey(1) & 0xFF
+try :
      
-            # clear the stream in preparation for the next frame
-            rawCapture.truncate(0)
+    for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
 
-        
-        except KeyboardInterrupt:
-            print ("Keyboard Interrupt" )
-            stop()
+        # grab the raw NumPy array representing the image, then initialize the timestamp
+        # and occupied/unoccupied text
+        image = frame.array
+
+        blur = cv2.blur(image, (3,3))
+
+        #hsv to complicate things, or stick with BGR
+        #hsv = cv2.cvtColor(blur,cv2.COLOR_BGR2HSV)
+        #thresh = cv2.inRange(hsv,np.array((0, 200, 200)), np.array((20, 255, 255)))
+
+        lower = np.array([0,0,75],dtype="uint8")
+        #upper = np.array([225,88,50], dtype="uint8")
+        upper = np.array([60,60,255], dtype="uint8")
+
+        thresh = cv2.inRange(blur, lower, upper)
+        thresh2 = thresh.copy()
+
+        # find contours in the threshold image
+        image, contours,hierarchy = cv2.findContours(thresh,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+
+        # finding contour with maximum area and store it as best_cnt
+
+        best_cnt = 1
+        max_area = 50
+
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area > max_area:
+                max_area = area
+                best_cnt = cnt
+                (x,y),radius = cv2.minEnclosingCircle(cnt)
+                center = (int(x),int(y))
+                radius = int(radius)
+                cv2.circle(blur,center,radius,(0,255,0),2)
+                count = count + 1  
+
+                if x > 120 and x < 200 :   
+                    forward()
+                    last_dir=2
+                    print ("Forward")                               
+                elif x >= 200 :     
+                    left()
+                    last_dir=0
+                    print ("Left")
+                elif x  <  120 :
+                    last_dir=1
+                    right()
+                    print ("Right")
+
+        if max_area == 50 and last_dir == 1:
+            right()
+            print ("Searching...")
+        elif max_area == 50 and last_dir == 0:
+            left()
+            print ("Searching...")
+
+        if last_dir == 2 :
+            print("Servo ON")
+            
+
+        # finding centroids of best_cnt and draw a circle there
+        M = cv2.moments(best_cnt)
+        cx,cy = int(M['m10']/M['m00']), int(M['m01']/M['m00'])
+        # show the frame
+        cv2.imshow("Frame", blur)
+        #cv2.imshow('thresh',thresh2)
+        key = cv2.waitKey(1) & 0xFF
+
+        # clear the stream in preparation for the next frame
+        rawCapture.truncate(0)
+
+except KeyboardInterrupt:
+    print ("Keyboard Interrupt" )
+
+except:  
+  print "Error occurred!"
+  
+finally:
+    print "THE END"
+    pwm.ChangeDutyCycle(12)  
+    time.sleep(1) 
+    GPIO.cleanup() 
