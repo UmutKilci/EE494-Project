@@ -23,6 +23,7 @@ me2=26
 GPIO.setup(TRIG,GPIO.OUT)
 GPIO.setup(ECHO,GPIO.IN)
 GPIO.output(TRIG, False)
+
 GPIO.setup(m11,GPIO.OUT)
 GPIO.setup(m12,GPIO.OUT)
 GPIO.setup(m21,GPIO.OUT)
@@ -36,14 +37,11 @@ pwm = GPIO.PWM(18, 100)
 pwm.start(12)
 time.sleep(1)
 
-forw = 0
-
 pwm_1=GPIO.PWM(me1,100)
 pwm_2=GPIO.PWM(me2,100)
 
 pwm_1.start(75)
 pwm_2.start(75)
-
 
 # initialize the camera and grab a reference to the raw camera capture
 camera = PiCamera()
@@ -125,10 +123,7 @@ def sensor():
     if distance < 20 :
         print ("Distance < 20 cm")
 
-##forward()
-# capture frames from the camera
-try :
-     
+try :    
     for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
 
         # grab the raw NumPy array representing the image, then initialize the timestamp
