@@ -9,6 +9,9 @@ import cv2
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
 
+encoder1=15
+encoder2=14
+
 TRIG = 23 
 ECHO = 24
 
@@ -23,42 +26,64 @@ me2=26
 GPIO.setup(TRIG,GPIO.OUT)
 GPIO.setup(ECHO,GPIO.IN)
 GPIO.output(TRIG, False)
-
+GPIO.setup(encoder1,GPIO.IN)
+GPIO.setup(encoder2,GPIO.IN)
 GPIO.setup(m11,GPIO.OUT)
 GPIO.setup(m12,GPIO.OUT)
 GPIO.setup(m21,GPIO.OUT)
 GPIO.setup(m22,GPIO.OUT)
 GPIO.setup(me1,GPIO.OUT)
 GPIO.setup(me2,GPIO.OUT)
-
-GPIO.setmode(GPIO.BCM)
 GPIO.setup(18, GPIO.OUT)
-pwm = GPIO.PWM(18, 100)
-pwm.start(12)
-time.sleep(0.1)
 
 pwm_1=GPIO.PWM(me1,100)
 pwm_2=GPIO.PWM(me2,100)
 
-pwm_1.start(75)
-pwm_2.start(75)
+pwm_1.start(100)
+pwm_2.start(100)
 
-# initialize the camera and grab a reference to the raw camera capture
-camera = PiCamera()
-camera.resolution = (320, 240)
-camera.framerate = 35
-camera.hflip = True
-camera.rotation = 180
-
-rawCapture = PiRGBArray(camera, size=(320, 240))
-
-# allow the camera to warmup
+global pwm                
+pwm = GPIO.PWM(18, 100)
+pwm.start(9)
 time.sleep(0.1)
+
+global duty_cycle1
+duty_cycle1 = 75
+global duty_cycle2
+duty_cycle2 = 100
+
+pwm_1.ChangeDutyCycle(duty_cycle1)
+pwm_2.ChangeDutyCycle(duty_cycle2)
+
+global revcount1
+revcount1 = 0
+global revcount2
+revcount2 = 0
+global total1
+total1 = 0
+global total2
+total2 = 0
+global distance1
+distance1=0
+global ditance2
+distance2=0
 
 global count
 count = 0
 global last_dir
 last_dir=0
+global servo_start
+servo_start=0
+
+# initialize the camera and grab a reference to the raw camera capture
+camera = PiCamera()
+camera.resolution = (320, 240)
+camera.framerate = 35
+camera.rotation = 180
+rawCapture = PiRGBArray(camera, size=(320, 240))
+
+# allow the camera to warmup
+time.sleep(0.1)
 
 def stop():
     GPIO.output(m11, 0)
@@ -67,14 +92,14 @@ def stop():
     GPIO.output(m22, 0)
 
 def forward():
-    pwm_1.ChangeDutyCycle(75)
-    pwm_2.ChangeDutyCycle(75)
+    pwm_1.ChangeDutyCycle(100)
+    pwm_2.ChangeDutyCycle(100)
     GPIO.output(m11, 1)
     GPIO.output(m12, 0)
     GPIO.output(m21, 1)
     GPIO.output(m22, 0)
 
-def slowforward():
+def forward_slow():
     pwm_1.ChangeDutyCycle(50)
     pwm_2.ChangeDutyCycle(50)
     GPIO.output(m11, 1)
@@ -91,8 +116,8 @@ def back():
     GPIO.output(m22, 1)
 
 def left():
-    pwm_1.ChangeDutyCycle(75)
-    pwm_2.ChangeDutyCycle(75)
+    pwm_1.ChangeDutyCycle(100)
+    pwm_2.ChangeDutyCycle(100)
     GPIO.output(m11, 0)
     GPIO.output(m12, 1)
     GPIO.output(m21, 1)
@@ -101,8 +126,8 @@ def left():
     stop()
 
 def right():
-    pwm_1.ChangeDutyCycle(75)
-    pwm_2.ChangeDutyCycle(75)
+    pwm_1.ChangeDutyCycle(100)
+    pwm_2.ChangeDutyCycle(100)
     GPIO.output(m11, 1)
     GPIO.output(m12, 0)
     GPIO.output(m21, 0)
@@ -126,8 +151,50 @@ def sensor():
     if distance < 20 :
         print ("Distance < 20 cm")
 
+def increaserev1(channel):
+    global revcount1
+    revcount1 += 1
+def increaserev2(channel):
+    global revcount2
+    revcount2 += 1
 
-class ServoClass:  
+GPIO.add_event_detect(encoder1, GPIO.RISING, callback=increaserev1)
+GPIO.add_event_detect(encoder2, GPIO.RISING, callback=increaserev2)
+
+def equal():
+    global duty_cycle1
+    global duty_cycle2    
+    global revcount1    
+    global revcount2        
+    if revcount1 < revcount2 :
+        if duty_cycle1 == 100 :
+            if duty_cycle2 > 60 :
+                duty_cycle2 = duty_cycle2 - 1
+            print("********************** R1 " +str(revcount1) + " / R2 " +str(revcount2) + " / D1 " +str(duty_cycle1) + " / D2 " +str(duty_cycle2))
+            pwm_2.ChangeDutyCycle(duty_cycle2)
+        else :
+            duty_cycle1 = duty_cycle1 + 1
+            print("********************** R1 " +str(revcount1) + " / R2 " +str(revcount2) + " / D1 " +str(duty_cycle1) + " / D2 " +str(duty_cycle2))
+            pwm_1.ChangeDutyCycle(duty_cycle1)
+    elif revcount1  > revcount2 :
+        if duty_cycle2 == 100 :
+            if duty_cycle1 > 60 :
+                duty_cycle1 = duty_cycle1 - 1
+            print("********************** R1 " +str(revcount1) + " / R2 " +str(revcount2) + " / D1 " +str(duty_cycle1) + " / D2 " +str(duty_cycle2))
+            pwm_1.ChangeDutyCycle(duty_cycle1)
+        else :
+            duty_cycle2 = duty_cycle2 + 1
+            print("********************** R1 " +str(revcount1) + " / R2 " +str(revcount2) + " / D1 " +str(duty_cycle1) + " / D2 " +str(duty_cycle2))
+            pwm_2.ChangeDutyCycle(duty_cycle2)
+    else :
+        if duty_cycle1 != 100 and duty_cycle2 != 100 :
+            duty_cycle1 = 100
+            duty_cycle2 = 100
+            print("********************** R1 " +str(revcount1) + " / R2 " +str(revcount2) + " / D1 " +str(duty_cycle1) + " / D2 " +str(duty_cycle2))
+            pwm_1.ChangeDutyCycle(duty_cycle1)
+            pwm_2.ChangeDutyCycle(duty_cycle2)
+                
+class EncoderClass:  
     def __init__(self):
         self._running = True
 
@@ -135,21 +202,59 @@ class ServoClass:
         self._running = False  
 
     def run(self):
-        global cycle
+        global last_dir         
+        global revcount1    
+        global revcount2  
         while self._running:
-            pwm.ChangeDutyCycle(15)
-			time.sleep(0.5)
-			pwm.ChangeDutyCycle(12)
-			time.sleep(0.5)
-			pwm.ChangeDutyCycle(9)
-			time.sleep(0.5)
-			pwm.ChangeDutyCycle(12)
-			time.sleep(0.5)		
+            if last_dir == 2 :
+                sleep = 1
+                time.sleep(sleep)
+                equal()
+                rpm1=float(revcount1)*0.028*60
+                rpm2=float(revcount2)*0.028*60
+                speed1 = rpm1 * 2*3.14*0.0325
+                speed2 = rpm2 * 2*3.14*0.0325
+                #distance1 = distance1 + (speed1/60)
+                #distance2 = distance2 + (speed2/60)              
+                print("**********************Speed 1 " +str(speed1)+ "**********Speed 2 " +str(speed2)) 
+                print("**********************RPM 1 " +str(rpm1)+ "**********RPM 2 " +str(rpm2))
+                revcount1 = 0
+                revcount2 = 0
+    
+class ServoClass:  
+    def __init__(self):
+        self._running = True
 
+    def terminate(self):  
+        self._running = False
 
-try :    
+    def run(self):
+        global pwm
+        global last_dir
+        while self._running:
+            if last_dir == 4 :
+                print ("Servo Active")
+            time.sleep(1)
+            #pwm.ChangeDutyCycle(6)
+            #time.sleep(1)
+            #pwm.ChangeDutyCycle(9)
+            #time.sleep(1)
+            #pwm.ChangeDutyCycle(12)
+            #time.sleep(1)
+            #pwm.ChangeDutyCycle(9)
+            #time.sleep(1)
+            
+Servo = ServoClass()
+ServoThread = Thread(target=Servo.run)
+ServoThread.start()
+
+Encoder = EncoderClass()
+EncoderThread = Thread(target=Encoder.run)
+EncoderThread.start()
+
+try :
     for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
-
+        
         # grab the raw NumPy array representing the image, then initialize the timestamp
         # and occupied/unoccupied text
         image = frame.array
@@ -160,7 +265,7 @@ try :
         #hsv = cv2.cvtColor(blur,cv2.COLOR_BGR2HSV)
         #thresh = cv2.inRange(hsv,np.array((0, 200, 200)), np.array((20, 255, 255)))
 
-        lower = np.array([0,0,75],dtype="uint8")
+        lower = np.array([0,0,150],dtype="uint8")
         #upper = np.array([225,88,50], dtype="uint8")
         upper = np.array([60,60,255], dtype="uint8")
 
@@ -173,7 +278,7 @@ try :
         # finding contour with maximum area and store it as best_cnt
 
         best_cnt = 1
-        max_area = 50
+        max_area = 100
 
         for cnt in contours:
             area = cv2.contourArea(cnt)
@@ -186,35 +291,31 @@ try :
                 cv2.circle(blur,center,radius,(0,255,0),2)
                 count = count + 1  
 
-                if x > 120 and x < 200 :   
-                    forward()
+                if x > 130 and x < 190 and last_dir != 2 :   
+                    #forward()
                     last_dir=2
-                    print ("Forward")                               
-                elif x >= 200 :     
-                    left()
+                    print ("Forward")                 
+                elif x >= 190 and last_dir != 1 :     
+                    #left()
                     last_dir=1
                     print ("Left")
-                elif x  <  120 :
+                elif x  <  130 and last_dir != 0:
+                    #right()
                     last_dir=0
-                    right()
                     print ("Right")
 
-        if max_area == 50 and last_dir == 0:
-            right()
-            print ("Searching...")
-        elif max_area == 50 and last_dir == 1:
-            left()
-            print ("Searching...")
-
-        if last_dir == 2 :
-            print("Servo On")
-			      Servo = ServoClass()
-			      ServoThread = Thread(target=Servo.run) 
-			      ServoThread.start()
-		    else :
-			      print("Servo Off")
-			      Servo.terminate()
-            
+        if max_area == 100 and last_dir == 0 :
+            #right()
+            last_dir=3
+            print ("Searching (Right)")
+        elif max_area == 100 and last_dir == 1:
+            #left()
+            last_dir=3
+            print ("Searching (Left)")
+        elif max_area == 100 and last_dir == 2 :
+            #forward_slow()
+            print ("Sensor Active")
+            last_dir=4
 
         # finding centroids of best_cnt and draw a circle there
         M = cv2.moments(best_cnt)
@@ -223,18 +324,20 @@ try :
         cv2.imshow("Frame", blur)
         #cv2.imshow('thresh',thresh2)
         key = cv2.waitKey(1) & 0xFF
-
+        
         # clear the stream in preparation for the next frame
         rawCapture.truncate(0)
 
+        if key == ord("q"):
+            break
+
 except KeyboardInterrupt:
     print ("Keyboard Interrupt" )
-
-except:  
-  print "Error occurred!"
-  
 finally:
-    print "THE END"
-    pwm.ChangeDutyCycle(12)  
-    time.sleep(1) 
-    GPIO.cleanup() 
+    print "THE END"    
+    rawCapture.truncate(0)
+    Servo.terminate()
+    Encoder.terminate()
+    pwm.ChangeDutyCycle(9)
+    GPIO.cleanup()
+    time.sleep(0.5)
