@@ -1,0 +1,65 @@
+from threading import Thread
+from picamera.array import PiRGBArray
+from picamera import PiCamera
+import sys, tty, termios
+import RPi.GPIO as GPIO
+import numpy as np
+import time
+import cv2
+
+cam = cv2.VideoCapture(0)
+s, img = cam.read()
+
+winName = "Movement Indicator"
+cv2.namedWindow(winName)
+
+lower = np.array([0,0,0],dtype="uint8")
+upper = np.array([180,255,255], dtype="uint8")
+a = True
+radius = 0
+while a:
+    
+    a, img = cam.read()
+    blur = cv2.blur(img, (3,3))
+    hsv = cv2.cvtColor(blur,cv2.COLOR_BGR2HSV) # HSV
+    thresh1 = cv2.inRange(hsv,lower, upper) # HSV
+        
+##    thresh1 = cv2.inRange(blur, lower, upper)   
+    image, contours,hierarchy = cv2.findContours(thresh1,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+
+    best_cnt = 1
+    max_area = 200
+
+    thresh2= thresh1.copy()
+
+    print(np.size(contours))
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area > max_area:
+            max_area = area
+            best_cnt = cnt
+            (x,y),radius = cv2.minEnclosingCircle(cnt)
+            center = (int(x),int(y))
+            x  = center[0]
+            y  = center[1]
+            centerx1 = (int(x)-int(radius),y)
+            centerx2 = (int(x)+int(radius),y)
+            radius = int(radius)
+    if radius > 30 : 
+        cv2.circle(blur,center,radius,(0,255,0),2)
+        cv2.circle(blur,center,2,(0,255,0),2)
+        cv2.circle(blur,centerx1,2,(0,255,255),5)
+        cv2.circle(blur,centerx2,2,(0,255,255),5)
+            
+    M = cv2.moments(best_cnt)
+    cx,cy = int(M['m10']/M['m00']), int(M['m01']/M['m00'])
+    # show the frame
+    print('slm')
+    cv2.imshow(winName, blur)
+
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord("q"):
+        cv2.destroyWindow(winName)
+        break
+
+print "Goodbye"
