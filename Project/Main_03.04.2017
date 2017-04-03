@@ -1,0 +1,604 @@
+from threading import Thread
+from picamera.array import PiRGBArray
+from picamera import PiCamera
+import sys, tty, termios
+import RPi.GPIO as GPIO
+import numpy as np
+import time
+import cv2
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+
+encoder1=15
+encoder2=14
+
+TRIG_RIGHT = 23 
+ECHO_RIGHT = 24
+TRIG_LEFT = 17
+ECHO_LEFT = 27
+
+m22=12
+m21=16
+m12=20
+m11=21 
+
+me1=19
+me2=26
+
+GPIO.setup(TRIG_RIGHT,GPIO.OUT)
+GPIO.setup(ECHO_RIGHT,GPIO.IN)
+GPIO.output(TRIG_RIGHT, False)
+GPIO.setup(TRIG_LEFT,GPIO.OUT)
+GPIO.setup(ECHO_LEFT,GPIO.IN)
+GPIO.output(TRIG_LEFT, False)
+GPIO.setup(encoder1,GPIO.IN)
+GPIO.setup(encoder2,GPIO.IN)
+GPIO.setup(m11,GPIO.OUT)
+GPIO.setup(m12,GPIO.OUT)
+GPIO.setup(m21,GPIO.OUT)
+GPIO.setup(m22,GPIO.OUT)
+GPIO.setup(me1,GPIO.OUT)
+GPIO.setup(me2,GPIO.OUT)
+GPIO.setup(18, GPIO.OUT)
+
+pwm_1=GPIO.PWM(me1,100)
+pwm_2=GPIO.PWM(me2,100)
+
+pwm_1.start(100)
+pwm_2.start(100)
+
+global pwm                
+pwm = GPIO.PWM(18, 100)
+pwm.start(9)
+time.sleep(0.1)
+
+global duty_cycle1
+duty_cycle1 = 85  #right
+global duty_cycle2
+duty_cycle2 = 100 # left
+
+pwm_1.ChangeDutyCycle(duty_cycle1)
+pwm_2.ChangeDutyCycle(duty_cycle2)
+
+global revcount1
+revcount1 = 0
+global revcount2
+revcount2 = 0
+global total1
+total1 = 0
+global total2
+total2 = 0
+global distance1
+distance1=0
+global ditance2
+distance2=0
+
+global count
+count = 0
+global distance_left_total
+distance_left_total = 0
+global distance_right_total
+distance_right_total = 0
+global last_dir
+last_dir=0
+global servo_start
+servo_start=0
+global exit_code
+exit_code=0
+global image_processing
+image_processing=0
+
+# allow the camera to warmup
+time.sleep(0.1)
+
+def stop():
+    GPIO.output(m11, 0)
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 0)
+    GPIO.output(m22, 0)
+
+def forward():
+    #pwm_1.ChangeDutyCycle(duty_cycle1)
+    #pwm_2.ChangeDutyCycle(duty_cycle2)
+    pwm_1.ChangeDutyCycle(75)
+    pwm_2.ChangeDutyCycle(75)
+    GPIO.output(m11, 1) #right wheel
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 1) #left wheel
+    GPIO.output(m22, 0)
+    time.sleep(0.1)
+    stop()
+
+def forward_slow():
+    pwm_1.ChangeDutyCycle(60)
+    pwm_2.ChangeDutyCycle(60) 
+    GPIO.output(m11, 1)
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 1)
+    GPIO.output(m22, 0)   
+    time.sleep(0.1)
+    stop()
+
+def back():
+    pwm_1.ChangeDutyCycle(60)
+    pwm_2.ChangeDutyCycle(60)
+    GPIO.output(m11, 0)
+    GPIO.output(m12, 1)
+    GPIO.output(m21, 0)
+    GPIO.output(m22, 1) 
+    time.sleep(0.1)
+    stop()
+
+def left():
+    pwm_1.ChangeDutyCycle(50)
+    pwm_2.ChangeDutyCycle(50)
+    GPIO.output(m11, 1)
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 0)
+    GPIO.output(m22, 1)    
+    time.sleep(0.1)
+    stop()
+
+def right():
+    pwm_1.ChangeDutyCycle(50)
+    pwm_2.ChangeDutyCycle(50)
+    GPIO.output(m11, 0)
+    GPIO.output(m12, 1)
+    GPIO.output(m21, 1)
+    GPIO.output(m22, 0)
+    time.sleep(0.1)
+    stop()
+
+class WebcamClass1:
+    
+    def __init__(self):
+        self._running = True
+        
+    def terminate(self):  
+        self._running = False
+
+    def run(self):
+        global exit_code
+        lower_1 = np.array([175, 70*255/100,10*255/100],dtype="uint8")
+        upper_1 = np.array([180, 100*255/100, 100*255/100], dtype="uint8")
+        cam1 = cv2.VideoCapture(0)
+        s_1, img_1 = cam1.read()
+        winName_1 = "TOPVIEW"
+        cv2.namedWindow(winName_1)
+        radius_1 = 0
+        while self._running:
+            s_1, img_1 = cam1.read()
+            if s_1 :                    
+                blur_1 = cv2.blur(img_1, (3,3))
+                hsv_1 = cv2.cvtColor(blur_1,cv2.COLOR_BGR2HSV)
+                thresh1_1 = cv2.inRange(hsv_1,lower_1, upper_1)      
+                image_1,contours_1,hierarchy_1 = cv2.findContours(thresh1_1,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+
+                best_cnt_1 = 1
+                max_area_1 = 200
+                
+                thresh2_1= thresh1_1.copy()
+            
+                for cnt_1 in contours_1:
+                    area_1 = cv2.contourArea(cnt_1)
+                    if area_1 > max_area_1:
+                        max_area_1 = area_1
+                        best_cnt_1 = cnt_1
+                        (x_1,y_1),radius_1 = cv2.minEnclosingCircle(cnt_1)
+                        center_1 = (int(x_1),int(y_1))
+                        x_1  = center_1[0]
+                        y_1  = center_1[1]
+                        centerx1_1 = (int(x_1)-int(radius_1),y_1)
+                        centerx2_1 = (int(x_1)+int(radius_1),y_1)
+                        radius_1 = int(radius_1)
+                if radius_1 > 50 : 
+                    cv2.circle(blur_1,center_1,radius_1,(0,255,0),2)
+                    cv2.circle(blur_1,center_1,2,(0,255,0),2)
+                    cv2.circle(blur_1,centerx1_1,2,(0,255,255),5)
+                    cv2.circle(blur_1,centerx2_1,2,(0,255,255),5)
+                    radius_1 = 0
+                        
+                M_1 = cv2.moments(best_cnt_1)
+                cx_1,cy_1 = int(M_1['m10']/M_1['m00']), int(M_1['m01']/M_1['m00'])
+                # show the frame
+                cv2.imshow(winName_1, blur_1)
+
+                key_1 = cv2.waitKey(1) & 0xFF
+                if key_1 == ord("q"):
+                    cv2.destroyWindow(winName_1)
+                    break
+
+                if exit_code == 1 :
+                    cv2.destroyWindow(winName_1)
+                    exit_code=3
+                    break
+            else :
+                time.sleep(0.2)
+
+class WebcamClass2:
+    
+    def __init__(self):
+        self._running = True
+        
+    def terminate(self):  
+        self._running = False
+
+    def run(self):
+        global exit_code
+        lower_2 = np.array([170, 50*255/100,5*255/100],dtype="uint8")
+        upper_2 = np.array([180, 100*255/100, 100*255/100], dtype="uint8")
+        cam2 = cv2.VideoCapture(1)
+        s_2, img_2 = cam2.read()
+        winName_2 = "FRONTVIEW"
+        cv2.namedWindow(winName_2)
+        radius_2 = 0
+        while self._running:
+            s_2, img_2 = cam2.read()
+            if s_2 :                    
+                blur_2 = cv2.blur(img_2, (3,3))
+                hsv_2 = cv2.cvtColor(blur_2,cv2.COLOR_BGR2HSV)
+                thresh1_2 = cv2.inRange(hsv_2,lower_2, upper_2)      
+                image_2,contours_2,hierarchy_2 = cv2.findContours(thresh1_2,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+
+                best_cnt_2 = 1
+                max_area_2 = 100
+                
+                thresh2_2= thresh1_2.copy()
+            
+                for cnt_2 in contours_2:
+                    area_2 = cv2.contourArea(cnt_2)
+                    if area_2 > max_area_2:
+                        max_area_2 = area_2
+                        best_cnt_2 = cnt_2
+                        (x_2,y_2),radius_2 = cv2.minEnclosingCircle(cnt_2)
+                        center_2 = (int(x_2),int(y_2))
+                        x_2  = center_2[0]
+                        y_2  = center_2[1]
+                        centerx1_2 = (int(x_2)-int(radius_2),y_2)
+                        centerx2_2 = (int(x_2)+int(radius_2),y_2)
+                        radius_2 = int(radius_2)
+                if radius_2 > 15 : 
+                    cv2.circle(blur_2,center_2,radius_2,(0,255,0),2)
+                    cv2.circle(blur_2,center_2,2,(0,255,0),2)
+                    cv2.circle(blur_2,centerx1_2,2,(0,255,255),5)
+                    cv2.circle(blur_2,centerx2_2,2,(0,255,255),5)
+                    radius_2 = 0
+                        
+                M_2 = cv2.moments(best_cnt_2)
+                cx_2,cy_2 = int(M_2['m10']/M_2['m00']), int(M_2['m01']/M_2['m00'])
+                # show the frame
+                cv2.imshow(winName_2, blur_2)
+
+                key_2 = cv2.waitKey(1) & 0xFF
+                if key_2 == ord("q"):
+                    cv2.destroyWindow(winName_2)
+                    break
+
+                if exit_code == 1 :
+                    cv2.destroyWindow(winName_2)
+                    exit_code=3
+                    break
+            else :
+                time.sleep(0.2)
+                
+class EncoderClass:
+    
+    def __init__(self):
+        self._running = True
+
+    def terminate(self):  
+        self._running = False
+
+    def increaserev1(self,channel):
+        global revcount1
+        revcount1 += 1
+        
+    def increaserev2(self,channel):
+        #print("PineApple")
+        global revcount2
+        revcount2 += 1
+
+    def equal(self):
+        global duty_cycle1
+        global duty_cycle2    
+        global revcount1    
+        global revcount2        
+        if revcount1 < revcount2 :
+            if duty_cycle1 == 100 :
+                if duty_cycle2 > 60 :
+                    duty_cycle2 = duty_cycle2 - 1
+                print("R1 " +str(revcount1) + " / R2 " +str(revcount2) + " / D1 " +str(duty_cycle1) + " / D2 " +str(duty_cycle2))
+                pwm_2.ChangeDutyCycle(duty_cycle2)
+            else :
+                duty_cycle1 = duty_cycle1 + 1
+                print("R1 " +str(revcount1) + " / R2 " +str(revcount2) + " / D1 " +str(duty_cycle1) + " / D2 " +str(duty_cycle2))
+                pwm_1.ChangeDutyCycle(duty_cycle1)
+        elif revcount1  > revcount2 :
+            if duty_cycle2 == 100 :
+                if duty_cycle1 > 60 :
+                    duty_cycle1 = duty_cycle1 - 1
+                print("R1 " +str(revcount1) + " / R2 " +str(revcount2) + " / D1 " +str(duty_cycle1) + " / D2 " +str(duty_cycle2))
+                pwm_1.ChangeDutyCycle(duty_cycle1)
+            else :
+                duty_cycle2 = duty_cycle2 + 1
+                print("R1 " +str(revcount1) + " / R2 " +str(revcount2) + " / D1 " +str(duty_cycle1) + " / D2 " +str(duty_cycle2))
+                pwm_2.ChangeDutyCycle(duty_cycle2)
+        else :
+            if duty_cycle1 != 100 and duty_cycle2 != 100 :
+                duty_cycle1 = 100
+                duty_cycle2 = 100
+                print("R1 " +str(revcount1) + " / R2 " +str(revcount2) + " / D1 " +str(duty_cycle1) + " / D2 " +str(duty_cycle2))
+                pwm_1.ChangeDutyCycle(duty_cycle1)
+                pwm_2.ChangeDutyCycle(duty_cycle2)
+    
+    def run(self):
+        x = EncoderClass()
+        GPIO.add_event_detect(encoder1, GPIO.RISING, callback=x.increaserev1)
+        GPIO.add_event_detect(encoder2, GPIO.RISING, callback=x.increaserev2)
+        global last_dir
+        global revcount1    
+        global revcount2
+        #print("0")
+        while self._running:
+            if last_dir == 2 :
+                sleep = 0.1
+                time.sleep(sleep)
+                x.equal()
+                #print("1")
+                rpm1=float(revcount1)*0.028*60
+                rpm2=float(revcount2)*0.028*60
+                speed1 = rpm1 * 2*3.14*0.0325
+                speed2 = rpm2 * 2*3.14*0.0325
+                #distance1 = distance1 + (speed1/60)
+                #distance2 = distance2 + (speed2/60)              
+                #print("**********************Speed 1 " +str(speed1)+ "**********Speed 2 " +str(speed2)) 
+                #print("**********************RPM 1 " +str(rpm1)+ "**********RPM 2 " +str(rpm2))
+                revcount1 = 0
+
+                revcount2 = 0
+            time.sleep(1)
+    
+class SensorClass:  
+    def __init__(self):
+        self._running = True
+
+    def terminate(self):  
+        self._running = False
+
+    def run(self):
+        global pwm
+        global last_dir
+        global distance_left_total
+        global distance_right_total
+        global count
+        GPIO.setmode(GPIO.BCM)
+        
+        while self._running:
+            
+            if last_dir == 4 :
+                
+                GPIO.output(TRIG_RIGHT, True)
+                time.sleep(0.00001)
+                GPIO.output(TRIG_RIGHT, False)
+                while GPIO.input(ECHO_RIGHT)==0:
+                    pulse_start_right = time.time()
+                while GPIO.input(ECHO_RIGHT)==1:
+                    pulse_end_right = time.time()
+                time.sleep(0.00001)
+                
+                GPIO.output(TRIG_LEFT, True)
+                time.sleep(0.00001)
+                GPIO.output(TRIG_LEFT, False)
+                while GPIO.input(ECHO_LEFT)==0:
+                    pulse_start_left = time.time()
+                while GPIO.input(ECHO_LEFT)==1:
+                    pulse_end_left = time.time()
+                time.sleep(0.00001)
+                
+
+                pulse_duration_right = pulse_end_right - pulse_start_right
+                distance_right = pulse_duration_right * 17150
+                distance_right = round(distance_right, 2)
+                
+                pulse_duration_left = pulse_end_left - pulse_start_left
+                distance_left = pulse_duration_left * 17150
+                distance_left = round(distance_left, 2)
+        
+                print("RS " + str(distance_right))
+                print("LS " + str(distance_left))
+                    
+            time.sleep(0.5)
+
+class ManuelClass:  
+    def __init__(self):
+        self._running = True
+
+    def terminate(self):  
+        self._running = False
+
+    def getch(self):
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(sys.stdin.fileno())
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return ch
+
+    def run(self):
+        global exit_code
+        global image_processing
+        global last_dir
+        global duty_cycle1
+        global duty_cycle2
+        
+        while self._running:
+            m = ManuelClass()
+            key = m.getch()
+            if key == "w":        
+                forward()
+                last_dir=2
+                print("Manuel-FORWARD")
+            elif key == "a":
+                left()
+                last_dir=1
+                print("Manuel-LEFT")
+            elif key == "d":
+               right()
+               last_dir=0
+               print("Manuel-RIGHT")
+            elif key == "s":
+                stop()
+                print("Manuel-STOP")
+            elif key == "b":
+                back()
+                print("Manuel-BACK")
+            elif key == "q":
+                exit_code=1
+                print("Manuel-EXIT")
+            elif key == "l":
+                print("Manuel-SERVO-L")
+                pwm.ChangeDutyCycle(10)
+                time.sleep(0.5)
+            elif key == "r":
+                print("Manuel-SERVO-R")
+                pwm.ChangeDutyCycle(6)
+                time.sleep(0.5)
+            elif key == "n":
+                print("Manuel-SERVO-N")
+                pwm.ChangeDutyCycle(8)
+                time.sleep(0.5)
+            elif key == "z":
+                print("Manuel-IP-OFF")
+                image_processing=0
+            elif key == "x":
+                print("Manuel-IP-ON")
+                image_processing=1
+            elif key == "p":
+                print("Manuel-Sensor-On")
+                last_dir=4
+            else :
+                print("Not Available")
+                
+            
+Sensor = SensorClass()
+SensorThread = Thread(target=Sensor.run)
+SensorThread.start()
+
+Manuel = ManuelClass()
+ManuelThread = Thread(target=Manuel.run)
+ManuelThread.start()
+
+Encoder = EncoderClass()
+EncoderThread = Thread(target=Encoder.run)
+EncoderThread.start()
+
+Webcam1 = WebcamClass1()
+WebcamThread1 = Thread(target=Webcam1.run)
+WebcamThread1.start()
+
+Webcam2 = WebcamClass2()
+WebcamThread2 = Thread(target=Webcam2.run)
+WebcamThread2.start()
+
+try :
+    while True :
+        time.sleep(0.1)
+        if exit_code == 3 :
+            break
+
+        
+##    for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
+##        print ('Hey')
+##        # grab the raw NumPy array representing the image, then initialize the timestamp
+##        # and occupied/unoccupied text
+##        image = frame.array
+##
+##        blur = cv2.blur(image, (3,3))
+##
+##        #hsv to complicate things, or stick with BGR
+##        hsv = cv2.cvtColor(blur,cv2.COLOR_BGR2HSV) # HSV
+##        thresh = cv2.inRange(hsv,np.array((175, 70*255/100,10*255/100)), np.array((180, 100*255/100, 100*255/100))) # HSV
+##        #thresh = cv2.inRange(hsv,np.array((105, 50*255/100,20*255/100)), np.array((120, 100*255/100, 60*255/100)))
+##        #thresh = cv2.inRange(hsv,np.array((100, 40*255/100,20*255/100)), np.array((105, 60*255/100, 100*255/100)))
+##        #lower = np.array([0,0,150],dtype="uint8")      # RGB
+##        #upper = np.array([60,60,255], dtype="uint8")   # RGB
+##
+##        #thresh = cv2.inRange(blur, lower, upper)       # RGB
+##        thresh2 = thresh.copy()                         # HSV
+##
+##        # find contours in the threshold image
+##        image, contours,hierarchy = cv2.findContours(thresh,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+##
+##        # finding contour with maximum area and store it as best_cnt
+##
+##        best_cnt = 1
+##        max_area = 50
+##            
+##        for cnt in contours:
+##            area = cv2.contourArea(cnt)
+##            if area > max_area:
+##                max_area = area
+##                best_cnt = cnt
+##                (x,y),radius = cv2.minEnclosingCircle(cnt)
+##                center = (int(x),int(y))
+##                radius = int(radius)
+##                cv2.circle(blur,center,radius,(0,86,255),2)
+##
+##                if  x > 100 and x < 220 and image_processing==1:   
+##                    forward()
+##                    last_dir=2
+##                    print ("Forward")                 
+##                elif x  <  100 and image_processing==1:     
+##                    left()
+##                    last_dir=1
+##                    print ("Left")
+##                elif  x >= 220 and image_processing==1:
+##                    right()
+##                    last_dir=0
+##                    print ("Right")
+##
+##        if max_area == 50 and last_dir == 0 and image_processing==1:
+##            right()
+##            #last_dir=3
+##            print ("Searching (Right)")
+##        elif max_area == 50 and last_dir == 1 and image_processing==1:
+##            left()
+##            #last_dir=3
+##            print ("Searching (Left)")
+##        elif max_area == 50 and last_dir == 2 and image_processing==1:
+##            forward_slow()
+##            print ("Sensor Active")
+##            last_dir=4
+##
+##        # finding centroids of best_cnt and draw a circle there
+##        M = cv2.moments(best_cnt)
+##        cx,cy = int(M['m10']/M['m00']), int(M['m01']/M['m00'])
+##        # show the frame
+##        cv2.imshow("Frame", blur)
+##        #cv2.imshow('thresh',thresh2)
+##        key = cv2.waitKey(1) & 0xFF
+##        
+##        # clear the stream in preparation for the next frame
+##        rawCapture.truncate(0)
+##        
+##        if key == ord("q"):
+##            break
+##        if exit_code == 2 :
+##            break
+
+except KeyboardInterrupt:
+    print ("Keyboard Interrupt" )
+finally:
+    print "THE END"
+    stop()
+    Sensor.terminate()
+    Manuel.terminate()
+    Encoder.terminate()
+    pwm.ChangeDutyCycle(9)
+    Webcam1.terminate()
+    Webcam2.terminate()
+    GPIO.cleanup()
+    time.sleep(0.5)
