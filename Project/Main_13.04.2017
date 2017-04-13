@@ -164,14 +164,23 @@ def forward():
     GPIO.output(m22, 0)
 
 def forward_step():
-    pwm_1.ChangeDutyCycle(75)
-    pwm_2.ChangeDutyCycle(75)
+    
+    pwm_1.ChangeDutyCycle(100)
+    pwm_2.ChangeDutyCycle(100)
     GPIO.output(m11, 1) #right wheel
     GPIO.output(m12, 0)
     GPIO.output(m21, 1) #left wheel
     GPIO.output(m22, 0)
-    time.sleep(0.1)
-    stop()
+    time.sleep(1)
+    pwm_1.ChangeDutyCycle(45)
+    pwm_2.ChangeDutyCycle(45)
+    
+    GPIO.output(m11, 1) #right wheel
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 1) #left wheel
+    GPIO.output(m22, 0)
+##    time.sleep(0.1)
+##    stop()
 
 def back():
     pwm_1.ChangeDutyCycle(60)
@@ -369,6 +378,13 @@ class WebcamClass2:
                     cv2.circle(blur_2,centerx1_2,2,(0,0,255),5)
                     cv2.circle(blur_2,centerx2_2,2,(0,0,255),5)
                     radius_2 = 0
+
+                    if nest_src == 0 and x_2 > 160 and x_2 < 480 :
+                        forward_step()
+                    elif nest_src == 0 and x_2 < 160 :
+                        search_left()
+                    elif nest_src == 0 and x_2 > 480 :
+                        search_right()
                     
                     if nest_src == 1 and x_2 > 160 and x_2 < 480 :
 ##                        forward_step()
@@ -632,9 +648,9 @@ ManuelThread.start()
 ##ServoThread = Thread(target=Servo.run)
 ##ServoThread.start()
 
-
+forward_step()
 while True :
-    left()
+    
     time.sleep(0.1)
     if exit_code == 1 :
         cv2.destroyWindow(winName_1)
