@@ -1,0 +1,775 @@
+from threading import Thread
+from picamera.array import PiRGBArray
+from picamera import PiCamera
+import sys, tty, termios
+import RPi.GPIO as GPIO
+import numpy as np
+import time
+import cv2
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+
+encoder1=15
+encoder2=14
+
+TRIG_RIGHT = 23 
+ECHO_RIGHT = 24
+TRIG_LEFT = 17
+ECHO_LEFT = 27
+TRIG_REAR= 22
+ECHO_REAR= 10
+
+m21=12
+m22=16
+m11=20
+m12=21 
+
+me1=19
+me2=26
+
+GPIO.setup(TRIG_REAR,GPIO.OUT)
+GPIO.setup(ECHO_REAR,GPIO.IN)
+GPIO.output(TRIG_REAR, False)
+GPIO.setup(TRIG_RIGHT,GPIO.OUT)
+GPIO.setup(ECHO_RIGHT,GPIO.IN)
+GPIO.output(TRIG_RIGHT, False)
+GPIO.setup(TRIG_LEFT,GPIO.OUT)
+GPIO.setup(ECHO_LEFT,GPIO.IN)
+GPIO.output(TRIG_LEFT, False)
+GPIO.setup(encoder1,GPIO.IN)
+GPIO.setup(encoder2,GPIO.IN)
+GPIO.setup(m11,GPIO.OUT)
+GPIO.setup(m12,GPIO.OUT)
+GPIO.setup(m21,GPIO.OUT)
+GPIO.setup(m22,GPIO.OUT)
+GPIO.setup(me1,GPIO.OUT)
+GPIO.setup(me2,GPIO.OUT)
+GPIO.setup(18, GPIO.OUT)
+
+pwm_1=GPIO.PWM(me1,100)
+pwm_2=GPIO.PWM(me2,100)
+
+pwm_1.start(100)
+pwm_2.start(100)
+
+global pwm                
+pwm = GPIO.PWM(18, 100)
+pwm.start(6.5)
+time.sleep(1)
+global duty_cycle
+duty_cycle=6.5
+
+global servo_dir
+servo_dir=1
+global duty_cycle1
+duty_cycle1 = 100  #right
+global duty_cycle2
+duty_cycle2 = 100 # left
+
+pwm_1.ChangeDutyCycle(duty_cycle1)
+pwm_2.ChangeDutyCycle(duty_cycle2)
+
+global stepX
+stepX = 0
+global x_1,y_1
+x_1 = 320
+y_1 = 240
+global x_2
+x_2 = 320
+global revcount1
+revcount1 = 0
+global revcount2
+revcount2 = 0
+global total1
+total1 = 0
+global total2
+total2 = 0
+global distance1
+distance1=0
+global ditance2
+distance2=0
+global waiting
+waiting=0 
+global count
+count = 0
+global distance_left_total
+distance_left_total = 0
+global distance_right_total
+distance_right_total = 0
+global last_dir
+last_dir=0
+global servo_start
+servo_start=0
+global exit_code
+exit_code=0
+global image_processing
+image_processing=0
+global last_seen
+last_seen = 1
+global sensor_on
+sensor_on = 0
+global last_seen_egg
+last_seen_egg = 0
+global last_seen_nest
+last_seen_nest = 0
+global nest_vs_egg #0:nest 1:egg
+nest_vs_egg = 0
+global x_nest
+x_nest=0
+global x_egg
+x_egg=0
+global diff
+diff=0
+
+global lower_1
+global upper_1
+lower_1 = np.array([170, 40*255/100,0*255/100],dtype="uint8")
+upper_1 = np.array([180, 100*255/100, 100*255/100], dtype="uint8")
+global cam1
+cam1 = cv2.VideoCapture(0)
+global s_1, img_1
+s_1, img_1 = cam1.read()
+global winName_1
+winName_1 = "TOPVIEW"
+cv2.namedWindow(winName_1)
+global radius_1
+radius_1 = 0
+
+global lower_2
+global upper_2
+lower_2 = np.array([0, 50*255/100,50*255/100],dtype="uint8")
+upper_2 = np.array([10, 100*255/100,100*255/100], dtype="uint8")
+global lowerNEST_2
+global upperNEST_2
+lowerNEST_2 = np.array([30, 20*255/100,70*255/100],dtype="uint8")
+upperNEST_2 = np.array([40, 100*255/100,100*255/100], dtype="uint8")
+global cam2
+cam2 = cv2.VideoCapture(1)
+global s_2, img_2
+s_2, img_2 = cam2.read()
+global winName_2
+winName_2 = "FRONTVIEW"
+cv2.namedWindow(winName_2)
+global radius_2
+radius_2 = 0
+
+def stop():
+    GPIO.output(m11, 0)
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 0)
+    GPIO.output(m22, 0)
+
+def forward():
+    pwm_1.ChangeDutyCycle(100)
+    pwm_2.ChangeDutyCycle(100)
+    GPIO.output(m11, 1) #right wheel
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 1) #left wheel
+    GPIO.output(m22, 0)
+    time.sleep(1)
+    pwm_1.ChangeDutyCycle(50)
+    pwm_2.ChangeDutyCycle(50)  
+
+def forward_cont():
+    pwm_1.ChangeDutyCycle(75)
+    pwm_2.ChangeDutyCycle(75)
+    GPIO.output(m11, 1)
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 1)
+    GPIO.output(m22, 0)	
+
+def forward_step():
+    pwm_1.ChangeDutyCycle(75)
+    pwm_2.ChangeDutyCycle(75)    
+    GPIO.output(m11, 1)
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 1)
+    GPIO.output(m22, 0)
+    time.sleep(0.1)
+    stop()
+
+def back():
+    pwm_1.ChangeDutyCycle(75)
+    pwm_2.ChangeDutyCycle(75)
+    GPIO.output(m11, 0)
+    GPIO.output(m12, 1)
+    GPIO.output(m21, 0)
+    GPIO.output(m22, 1) 
+    time.sleep(0.1)
+    stop()
+	
+def back_cont():
+    pwm_1.ChangeDutyCycle(75)
+    pwm_2.ChangeDutyCycle(75)
+    GPIO.output(m11, 0)
+    GPIO.output(m12, 1)
+    GPIO.output(m21, 0)
+    GPIO.output(m22, 1) 
+    time.sleep(3)
+    stop()
+
+def left():
+    pwm_1.ChangeDutyCycle(75)
+    pwm_2.ChangeDutyCycle(75)
+    GPIO.output(m11, 1)
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 0)
+    GPIO.output(m22, 1)    
+    time.sleep(0.1)
+    stop()
+
+def right():
+    pwm_1.ChangeDutyCycle(75)
+    pwm_2.ChangeDutyCycle(75)
+    GPIO.output(m11, 0)
+    GPIO.output(m12, 1)
+    GPIO.output(m21, 1)
+    GPIO.output(m22, 0)   
+    time.sleep(0.1)
+    stop()
+	
+def left_cont():
+    pwm_1.ChangeDutyCycle(75)
+    pwm_2.ChangeDutyCycle(75)
+    GPIO.output(m11, 1)
+    GPIO.output(m12, 0)
+    GPIO.output(m21, 0)
+    GPIO.output(m22, 1)    
+
+def right_cont():
+    pwm_1.ChangeDutyCycle(75)
+    pwm_2.ChangeDutyCycle(75)
+    GPIO.output(m11, 0)
+    GPIO.output(m12, 1)
+    GPIO.output(m21, 1)
+    GPIO.output(m22, 0)   
+	
+def process20()
+	left_cont()
+	time.sleep(1)
+	stop()
+	forward_cont()
+	time.sleep(3)
+	stop()
+	left_cont()
+	time.sleep(1)
+	stop()
+	forward_cont()
+	time.sleep(6)
+	stop()
+	left_cont()
+	time.sleep(1)
+	stop()
+	forward_cont()
+	time.sleep(3)
+	stop()
+	left_cont()
+	time.sleep(1)
+	stop()
+	stepX = 3
+	
+
+# Step0 : FC egg detection, TC egg detection, continue moving until TC detects
+# Step1 : FC nest detection, TC nothing, rotating until FC detects
+# Step2 : FC nothing, TC nothing, Check back sensors : nothing => step 10, something=> step 20
+	# Step10 : FC egg&nest detection, TC nothing, Go backwards until both egg and nest available, then go Step3
+	# Step20 : FC nothing, TC nothing, turn 90 degree, frwd, turn -90 degree, frwd, turn -90 degree, frwd, turn -90 degree, then go Step10
+# Step 3 : FC => Align egg&nest until TC detects egg, if it is not aligned when TC detects, go backwards 20 cm
+# Step 4 : FC nest control, TC egg control, pushing operation, if egg is lost or out of pushing plate, go backwards 20 cm and go step 0
+	
+
+class WebcamClass1: #TopView
+    
+    def __init__(self):
+        self._running = True
+        
+    def terminate(self):  
+        self._running = False
+
+    def run(self):
+        
+        while self._running :
+            global servo_dir
+            global exit_code
+            global lower_1
+            global upper_1
+            global cam1
+            global s_1, img_1
+            global winName_1
+            global radius_1
+            global stepX
+            global x_1,y_1
+			global last_seen_egg
+			global last_seen_nest
+			global nest_vs_egg #0:nest 1:egg
+			global x_nest
+			global x_egg
+			global diff
+            s_1, img_1 = cam1.read()
+            
+            if s_1 :                    
+                blur_1 = cv2.blur(img_1, (3,3))
+                hsv_1 = cv2.cvtColor(blur_1,cv2.COLOR_BGR2HSV)
+                thresh1_1 = cv2.inRange(hsv_1,lower_1, upper_1)      
+                image_1,contours_1,hierarchy_1 = cv2.findContours(thresh1_1,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+                best_cnt_1 = 1
+                max_area_1 = 200
+                
+                thresh2_1= thresh1_1.copy()
+            
+                for cnt_1 in contours_1:
+                    area_1 = cv2.contourArea(cnt_1)
+                    if area_1 > max_area_1:
+                        max_area_1 = area_1
+                        best_cnt_1 = cnt_1
+                        (x_1,y_1),radius_1 = cv2.minEnclosingCircle(cnt_1)
+                        center_1 = (int(x_1),int(y_1))
+                        x_1  = center_1[0]
+                        y_1  = center_1[1]
+                        centerx1_1 = (int(x_1)-int(radius_1),y_1)
+                        centerx2_1 = (int(x_1)+int(radius_1),y_1)
+                        radius_1 = int(radius_1)
+                if radius_1 > 50 :
+                    cv2.circle(blur_1,center_1,radius_1,(0,255,0),2)
+                    cv2.circle(blur_1,center_1,2,(0,255,0),2)
+                    cv2.circle(blur_1,centerx1_1,2,(0,255,255),5)
+                    cv2.circle(blur_1,centerx2_1,2,(0,255,255),5)
+                    radius_1 = 0  
+
+					# Step0 : FC egg detection, TC egg detection, continue moving until TC detects
+					if stepX == 0 :
+						stepX = 1
+						
+					# Step 3 : FC => Align egg&nest until TC detects egg, if it is not aligned when TC detects, go backwards 20 cm
+					if stepX == 3 and diff<100 and diff>(-100):
+						stepX = 4
+					elif stepX == 3 and (diff>100 or diff<(-100)):
+						back_cont()
+										
+                else :
+				# Step 4 : FC nest control, TC egg control, pushing operation, if egg is lost or out of pushing plate, go backwards 20 cm and go step 0
+					if stepX == 4 :
+						back_cont()
+						stepX=0                    
+                        
+                M_1 = cv2.moments(best_cnt_1)
+                cx_1,cy_1 = int(M_1['m10']/M_1['m00']), int(M_1['m01']/M_1['m00'])
+                
+                cv2.imshow(winName_1, blur_1)
+                key = cv2.waitKey(1) & 0xFF
+                
+                if exit_code == 1  :
+                    break
+            else :
+                time.sleep(0.5)
+
+class WebcamClass2: #FrontView
+    
+    def __init__(self):
+        self._running = True
+                
+    def terminate(self):  
+        self._running = False
+
+    def run(self):
+        
+        while self._running :
+            
+            global exit_code
+            global cam2       
+            global s_2, img_2
+            global winName_2
+            global radius_2
+            global lower_2
+            global upper_2
+            global lowerNEST_2
+            global upperNEST_2
+            global stepX
+            global last_seen_egg
+			global last_seen_nest
+            global x_2
+			global nest_vs_egg #0:nest 1:egg
+			global x_nest
+			global x_egg
+			global diff
+            s_2, img_2 = cam2.read()
+            
+            if s_2 :                    
+                blur_2 = cv2.blur(img_2, (3,3))
+                hsv_2 = cv2.cvtColor(blur_2,cv2.COLOR_BGR2HSV)
+                
+				# Step0 : FC egg detection, TC egg detection, continue moving until TC detects
+                if stepX == 0 :
+                    thresh1_2 = cv2.inRange(hsv_2,lower_2, upper_2)
+				# Step1 : FC nest detection, TC nothing, rotating until FC detects
+				# Step 4 : FC nest control, TC egg control, pushing operation, if egg is lost or out of pushing plate, go backwards 20 cm and go step 0
+                elif stepX == 1 or stepX == 4 :
+                    thresh1_2 = cv2.inRange(hsv_2,lowerNEST_2, upperNEST_2)
+					
+				nest_vs_egg = nest_vs_egg + 1
+				
+				# Step10 : FC egg&nest detection, TC nothing, Go backwards until both egg and nest available, then go Step3
+				if stepX == 10 and nest_vs_egg % 2 == 0:
+					thresh1_2 = cv2.inRange(hsv_2,lowerNEST_2, upperNEST_2)
+				elif stepX == 10 and nest_vs_egg % 2 == 1:
+					thresh1_2 = cv2.inRange(hsv_2,lower_2, upper_2)
+				
+                    
+                image_2,contours_2,hierarchy_2 = cv2.findContours(thresh1_2,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+
+                best_cnt_2 = 1
+                max_area_2 = 100
+                
+                thresh2_2= thresh1_2.copy()
+            
+                for cnt_2 in contours_2:
+                    area_2 = cv2.contourArea(cnt_2)
+                    if area_2 > max_area_2:
+                        max_area_2 = area_2
+                        best_cnt_2 = cnt_2
+                        (x_2,y_2),radius_2 = cv2.minEnclosingCircle(cnt_2)
+                        center_2 = (int(x_2),int(y_2))
+                        x_2  = center_2[0]
+                        y_2  = center_2[1]
+                        centerx1_2 = (int(x_2)-int(radius_2),y_2)
+                        centerx2_2 = (int(x_2)+int(radius_2),y_2)
+                        radius_2 = int(radius_2)
+						
+                if radius_2 > 20 : 
+                    cv2.circle(blur_2,center_2,radius_2,(0,120,255),2)
+                    cv2.circle(blur_2,center_2,2,(0,120,255),2)
+                    cv2.circle(blur_2,centerx1_2,2,(0,0,255),5)
+                    cv2.circle(blur_2,centerx2_2,2,(0,0,255),5)
+                    radius_2 = 0
+					
+					# Step 4 : FC nest control, TC egg control, pushing operation, if egg is lost or out of pushing plate, go backwards 20 cm and go step 0
+					if stepX == 4 and x_2 > 160 and x_2 < 480 :
+                        forward_step()
+                    elif stepX == 4 and x_2 < 160 :
+                        left()
+                    elif stepX == 4 and x_2 > 480 :
+                        right() 
+					
+					# Step10 : FC egg&nest detection, TC nothing, Go backwards until both egg and nest available, then go Step3
+					if stepX == 10 and nest_vs_egg % 2 == 0:
+						x_nest=x_2
+					elif stepX == 10 and nest_vs_egg % 2 == 1:
+						x_egg=x_2
+						
+					# Step0 : FC egg detection, TC egg detection, continue moving until TC detects
+                    if stepX == 0 and x_2 > 160 and x_2 < 480 :
+                        forward_step()
+                    elif stepX == 0 and x_2 < 160 :
+                        left()
+                    elif stepX == 0 and x_2 > 480 :
+                        right() 
+						
+					# Step1 : FC nest detection, TC nothing, rotating until FC detects	
+					if stepX == 1 and x_2 > 160 and x_2 < 480 :
+                        stepX = 2
+                    elif stepX == 1 and x_2 < 160 :
+                        left()
+                    elif stepX == 1 and x_2 > 480 :
+                        right() 
+						
+                else :
+					# Step0 : FC egg detection, TC egg detection, continue moving until TC detects
+					if stepX == 0 and (last_seen_egg == 0 or last_seen_egg == 1) :
+						left()
+					elif stepX == 0 and last_seen_egg == 2 :
+						right()
+					
+					# Step1 : FC nest detection, TC nothing, rotating until FC detects
+					if stepX == 1 and (last_seen_nest == 0 or last_seen_nest == 1) :
+						left()
+					elif stepX == 1 and last_seen_nest == 2 :
+						right()		
+						
+				# Step 3 : FC => Align egg&nest until TC detects egg, if it is not aligned when TC detects, go backwards 20 cm		
+				if stepX ==3 and x_nest!=0 and x_egg!=0 :
+					diff = x_nest-x_egg
+					if diff<(-100):
+						right()
+						forward_step()
+						left()
+					elif diff>(100):
+						left()
+						forward_step()
+						right()
+				
+				# Step10 : FC egg&nest detection, TC nothing, Go backwards until both egg and nest available, then go Step3
+				if stepX == 10 and (x_nest==0 or x_egg==0) :
+					back()
+				elif stepX == 10 and (x_nest!=0 and x_egg!=0) :
+					stepX = 3
+				
+                M_2 = cv2.moments(best_cnt_2)
+                cx_2,cy_2 = int(M_2['m10']/M_2['m00']), int(M_2['m01']/M_2['m00'])
+                
+                cv2.imshow(winName_2, blur_2)
+                key = cv2.waitKey(1) & 0xFF
+
+                if exit_code == 1  :
+                    break
+            else :
+                time.sleep(0.5)
+            
+    
+class SensorClass:
+    
+    def __init__(self):
+        self._running = True
+
+    def terminate(self):  
+        self._running = False
+
+    def run(self):
+        global last_dir
+        global count
+        global sensor_on
+        global waiting
+		global stepX
+        
+        while self._running:
+            
+            if sensor_on == 1:
+
+				GPIO.output(23, True)
+				time.sleep(0.00001)
+				GPIO.output(23, False)
+				while GPIO.input(24)==0:
+					pulse_start_right = time.time()
+				while GPIO.input(24)==1:
+					pulse_end_right = time.time()                        
+				time.sleep(0.00001)
+				
+				GPIO.output(17, True)
+				time.sleep(0.00001)
+				GPIO.output(17, False)
+				while GPIO.input(27)==0:
+					pulse_start_left = time.time()
+				while GPIO.input(27)==1:
+					pulse_end_left = time.time()
+				time.sleep(0.00001)
+
+				GPIO.output(22, True)
+				time.sleep(0.00001)
+				GPIO.output(22, False)
+				while GPIO.input(10)==0:
+					pulse_start_rear = time.time()
+				while GPIO.input(10)==1:
+					pulse_end_rear = time.time()
+				time.sleep(0.00001)
+ 
+
+				pulse_duration_right = pulse_end_right - pulse_start_right
+				distance_right = pulse_duration_right * 17150
+				distance_right = round(distance_right, 2)
+				
+				pulse_duration_left = pulse_end_left - pulse_start_left
+				distance_left = pulse_duration_left * 17150
+				distance_left = round(distance_left, 2)
+
+				pulse_duration_rear = pulse_end_rear - pulse_start_rear
+				distance_rear = pulse_duration_rear * 17150
+				distance_rear = round(distance_rear, 2)
+				
+				pulse_duration_rear2 = pulse_end_rear2 - pulse_start_rear2
+				distance_rear2 = pulse_duration_rear2 * 17150
+				distance_rear2 = round(distance_rear2, 2)
+			
+				print("R " + str(distance_right))
+				print("L " + str(distance_left))
+				print("RR " + str(distance_rear))
+				print("RR2 " + str(distance_rear2))
+
+				if waiting > 0 :
+					waiting = waiting-1
+
+				if distance_right<20 or distance_left<20 or distance_rear<20 :
+					stop()
+					waiting = 5
+					
+				# Step2 : FC nothing, TC nothing, Check back sensors : nothing => step 10, something=> step 20
+				if stepX == 2 and (distance_rear<10 or distance_rear2<10) :
+					stepX = 20 
+				# Step20 : FC nothing, TC nothing, turn 90 degree, frwd, turn -90 degree, frwd, turn -90 degree, frwd, turn -90 degree, then go Step10
+					process20()
+				elif stepX == 2 and !(distance_rear<10 or distance_rear2<10) :
+					stepX = 10
+				# Step10 : FC egg&nest detection, TC nothing, Go backwards until both egg and nest available, then go Step3
+					
+				print("waiting " + str(waiting))
+				
+			time.sleep(1)
+
+class ServoClass:
+    
+    def __init__(self):
+        self._running = True
+
+    def terminate(self):  
+        self._running = False
+
+    def run(self):        
+        global duty_cycle
+        global pwm
+        global stepX
+        global x_1
+        global x_2
+
+        while self._running:
+            
+            while duty_cycle<=7 and x_1 < 210 and x_1> 100 and stepX==4 :
+                duty_cycle=duty_cycle+0.5
+                pwm.ChangeDutyCycle(duty_cycle)
+                print(str(duty_cycle))
+                time.sleep(0.5)
+
+            while duty_cycle>=6 and x_1 > 430 and x_1< 550 and stepX==4 :
+                duty_cycle=duty_cycle-0.5
+                pwm.ChangeDutyCycle(duty_cycle)
+                print(str(duty_cycle))
+                time.sleep(0.5)
+
+            while duty_cycle!=6.5 and ((x_1 > 210 and x_1 < 430) or (x_1 < 100 or x_1 > 550) or stepX==4) :
+                if duty_cycle < 6.5 :
+                    duty_cycle=duty_cycle+0.5
+                    pwm.ChangeDutyCycle(duty_cycle)
+                    print(str(duty_cycle))
+                    time.sleep(0.5)
+                else :
+                    duty_cycle=duty_cycle-0.5
+                    pwm.ChangeDutyCycle(duty_cycle)
+                    print(str(duty_cycle))
+                    time.sleep(0.5)
+
+            time.sleep(0.5)
+                            
+            
+
+class ManuelClass:  
+    def __init__(self):
+        self._running = True
+
+    def terminate(self):  
+        self._running = False
+
+    def getch(self):
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(sys.stdin.fileno())
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return ch
+
+    def run(self):
+        global exit_code
+        global image_processing
+        global last_dir
+        global duty_cycle1
+        global duty_cycle2
+        global sensor_on
+        global pwm
+        
+        while self._running:
+            time.sleep(0.1)
+            m = ManuelClass()
+            key = m.getch()
+            if key == "w":        
+                forward()
+                last_dir=2
+                print("Manuel-FORWARD")
+            elif key == "a":
+                left()
+                last_dir=1
+                print("Manuel-LEFT")
+            elif key == "d":
+               right()
+               last_dir=0
+               print("Manuel-RIGHT")
+            elif key == "z":
+                left()
+                last_dir=1
+                print("Manuel-LEFT")
+            elif key == "c":
+               right()
+               last_dir=0
+               print("Manuel-RIGHT")
+            elif key == "s":
+                stop()
+                print("Manuel-STOP")
+            elif key == "b":
+                back()
+                print("Manuel-BACK")
+            elif key == "q":
+                exit_code=1
+                print("Manuel-EXIT")
+            elif key == "l":
+                print("Manuel-SERVO-L")
+                pwm.ChangeDutyCycle(8)
+                time.sleep(0.5)
+            elif key == "r":
+                print("Manuel-SERVO-R")
+                pwm.ChangeDutyCycle(5)
+                time.sleep(0.5)
+            elif key == "n":
+                print("Manuel-SERVO-N")
+                pwm.ChangeDutyCycle(6.2)
+                time.sleep(0.5)
+            elif key == "v":
+                print("Manuel-IP-OFF")
+                image_processing=0
+            elif key == "b":
+                print("Manuel-IP-ON")
+                image_processing=1
+            elif key == "p":
+                print("Manuel-Sensor-ON")
+                sensor_on=1
+            elif key == "o":
+                print("Manuel-Sensor-OFF")
+                sensor_on=0
+            else :
+                print("Not Available")
+           
+                
+       
+Sensor = SensorClass()
+SensorThread = Thread(target=Sensor.run)
+SensorThread.start()
+
+Manuel = ManuelClass()
+ManuelThread = Thread(target=Manuel.run)
+ManuelThread.start()
+
+Webcam1 = WebcamClass1()
+WebcamThread1 = Thread(target=Webcam1.run)
+WebcamThread1.start()
+
+Webcam2 = WebcamClass2()
+WebcamThread2 = Thread(target=Webcam2.run)
+WebcamThread2.start()
+
+Servo = ServoClass()
+ServoThread = Thread(target=Servo.run)
+ServoThread.start()
+
+while True :    
+    time.sleep(0.1)
+    if exit_code == 1 :
+        cv2.destroyWindow(winName_1)
+        cv2.destroyWindow(winName_2)
+        break
+print "THE END"
+stop()
+Sensor.terminate()
+Manuel.terminate()
+pwm.ChangeDutyCycle(6)
+Webcam1.terminate()
+Webcam2.terminate()
+Servo.terminate()
+GPIO.cleanup()
+time.sleep(0.5)
